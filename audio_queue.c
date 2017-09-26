@@ -53,7 +53,7 @@ Int audioQueueLength(audioQueue *q)
 state enQueue(Queue * q, QUEUE_DATA_TYPE data)
 {
 	//如果队列满
-    if(q->capacity == q->size)
+	if(q->front==(q->rear+1)&0x3fff)
     {
 //		printf("Warming:The queue is full!\n");
 		return ERROR;

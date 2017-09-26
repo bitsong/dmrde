@@ -85,13 +85,6 @@
 //128.3
 //#define H_TXPWR			(1.615f)//1w(2.125f)//20w
 //#define L_TXPWR			(1.615f)//1w
-//128.4  1.60
-//#define H_TXPWR			(1.925f)//20w  14w 1.925
-//#define L_TXPWR			(1.48f)//1w
-
-//// 1.61
-//#define H_TXPWR			(1.8f)//20w  14w 1.925
-//#define L_TXPWR			(1.442f)//1w
 
 #define SYNC_CODE_PREPARE	100
 #define RPE_DATAFLOW_END	101
