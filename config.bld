@@ -1,0 +1,74 @@
+/*
+ *  ======== config.bld ========
+ *
+ */
+
+var Build = xdc.useModule('xdc.bld.BuildEnvironment');
+
+/*  Memory Map for ti.platforms.evmOMAPL138
+ *
+ *  C000_0000 - C7FF_FFFF   800_0000  ( 128 MB) External Memory
+ *  ------------------------------------------------------------------------
+ *  C000_0000 - C1FF_FFFF   200_0000  (  32 MB) Linux
+ *  C200_0000 - C200_0FFF		1000  (  4k   ) ------
+ *  C200_1000 - C210_0FFF    10_0000  (  1M   ) SR_0(ipc)
+ *  C210_1000 - C250_0FFF    40_0000  (  4M   ) SR_1(messageq)
+ *  C250_100O - C28F_EFFF    3F_E000  ( ~4M-8K) SR_2(general purpose)
+ *  C28F_F000 - C2FF_EFFF    70_0000  (  7M   ) SR_3(ringio)
+ *  C2FF_F000 - C2FF_FFFF		1000  (  4k   ) ------
+ *  C300_0000 - C3FF_EFFF    FF_F000  (~16M-4k) DSP_PROG (code, data)
+ *  C3FF_F000 - C3FF_FFFF       1000  (  4k   ) ------
+ *  C400_0000 - C7FF_FFFF   400_0000  (  64 MB) Linux
+ *
+*/
+
+var SR_0 = {
+        name: "SR_0", space: "data", access: "RWX",
+        base: 0xC2001000, len: 0x100000,
+        comment: "SR#0 Memory (1 MB)"
+    };
+
+var SR_1 = {
+        name: "SR_1", space: "data", access: "RWX",
+        base: 0xC2101000, len: 0x400000,
+        comment: "SR#1 Memory (4 MB)"
+    };
+
+var SR_2 = {
+        name: "SR_2", space: "data", access: "RWX",
+        base: 0xC2501000, len: 0x3FE000,
+        comment: "SR#2 Memory (~4 MB)"
+    };
+
+var SR_3 = {
+        name: "SR_3", space: "data", access: "RWX",
+        base: 0xC28FF000, len: 0x700000,
+        comment: "SR#3 Memory (7 MB)"
+    };
+
+Build.platformTable["ti.platforms.evmOMAPL138:dsp"] = {
+    externalMemoryMap: [
+    [ SR_0.name, SR_0 ],
+	[ SR_1.name, SR_1 ],
+	[ SR_2.name, SR_2 ],
+	[ SR_3.name, SR_3 ],
+        [ "DSP_PROG", {
+            name: "DSP_PROG", space: "code/data", access: "RWX",
+            base: 0xC3000000, len: 0xFFF000,
+            comment: "DSP Program Memory (~16 MB)"
+        }]
+    ],
+    codeMemory:  "DSP_PROG",
+    dataMemory:  "DSP_PROG",
+    stackMemory: "DSP_PROG",
+    l1DMode: "32k",
+    l1PMode: "32k",
+    l2Mode: "32k"
+};
+
+/*
+ *  ======== ti.targets.elf.C674 ========
+ */
+var C674_ELF = xdc.useModule('ti.targets.elf.C674');
+C674_ELF.ccOpts.suffix += " -mi10 -mo ";
+Build.targets.$add(C674_ELF);
