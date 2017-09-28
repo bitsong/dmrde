@@ -194,8 +194,8 @@ void detectFreq(float *inBuf,float *outBuf)
 		if(reverseRSSI<0.000001&&reverseRSSI>-0.000001)
 			continue;
 		outBuf[i] = (temp[3+5*i] * temp[4+5*i] + 0.00390625 * (9*temp[4+5*i] - 9*temp[2+5*i] + temp[6+5*i] - temp[5*i]) * (9*temp[5+5*i] - 9*temp[3+5*i] + temp[7+5*i] - temp[1+5*i]))/reverseRSSI;
-		if(outBuf[i]>0.3 || outBuf[i]<-0.3)
-			outBuf[i] = 0;
+//		if(outBuf[i]>0.3 || outBuf[i]<-0.3)
+//			outBuf[i] = 0;
 	}
 }
 
@@ -377,7 +377,7 @@ void toShort(float *inBuf,short *outBuf)
 	{
 		//lfBufOut[i] = lfBufOut[i] + ((lfBufOut[i]*lfBufOut[i]*lfBufOut[i])*0.1666667+((lfBufOut[i]*lfBufOut[i]*lfBufOut[i]*lfBufOut[i]*lfBufOut[i])*0.075));//����   y+1/6*y^3;
 
-		outBuf[i] = (short)(inBuf[i]*0x7fff);
+		outBuf[i] = (short)(inBuf[i]*0x3fff);
 	}
 }
 

@@ -97,6 +97,14 @@ UInt32 coreNum = 0xFFFF;
 void* bufRx[NUM_BUFS];
 void* bufTx[NUM_BUFS];
 
+#ifdef MCBSP_LOOP_PING_PONG
+#define INIT_SUBMIT_Q_CNT 2
+/* Ping pong buffers used to submit to Mcbsp lld, which will be used in a loop */
+void* bufRxPingPong[INIT_SUBMIT_Q_CNT];
+void* bufTxPingPong[INIT_SUBMIT_Q_CNT];
+
+int TxpingPongIndex,RxpingPongIndex;
+#endif
 /* Global Error call back function prototype */
 void mcbsp_GblErrCallback(uint32_t chanHandle,uint32_t spcr_read,uint32_t Arg3);
 
@@ -278,32 +286,22 @@ void mcbspAppCallback(void* arg, Mcbsp_IOBuf *ioBuf)
             edmaTxDone = 1;
         }else
             txunderflowcnt++;
-    	memcpy((unsigned char*)bufTx[0],buf_transmit,BUFSIZE);
+    	memcpy((unsigned char*)bufTxPingPong[TxpingPongIndex],buf_transmit,BUFSIZE);
+    	TxpingPongIndex=(TxpingPongIndex)?0:1;
     	if(1==tx_flag)
-//    		if(1==tx_submit)
     		Semaphore_post(sem2);
     }
     else if (mode == MCBSP_MODE_INPUT)
     {
-//    	CSL_FINS(gpioRegs->BANK[1].OUT_DATA,GPIO_OUT_DATA_OUT2,0);
         if(ioBuf) {
             num_rx_Call_backs++;
             edmaRxDone = 1;
         }else
             rxunderflowcnt++;
-        memcpy(buf_adc,(unsigned char*)bufRx[0],REC_BUFSIZE);
+        memcpy(buf_adc,(unsigned char*)bufRxPingPong[RxpingPongIndex],REC_BUFSIZE);
+        RxpingPongIndex=(RxpingPongIndex)?0:1;
         if(1==rx_flag)
         	Semaphore_post(sem1);
-//        CSL_FINS(gpioRegs->BANK[1].OUT_DATA,GPIO_OUT_DATA_OUT2,1);
-
-//            	if(flag==0){
-//            		CSL_FINS(gpioRegs->BANK[1].OUT_DATA,GPIO_OUT_DATA_OUT2,0);
-//            	    flag=1;
-//            	}
-//            	else{
-//            	    CSL_FINS(gpioRegs->BANK[1].OUT_DATA,GPIO_OUT_DATA_OUT2,1);
-//            	    flag=0;
-//            	}
     }else
         dummy_call_backs++;
     return;
@@ -344,7 +342,9 @@ void _task_mcbsp(void)
     int txFrameIndex=0, rxFrameIndex=0;
     int init_count=0;
     uint32_t tempdata=0;
-
+#ifdef MCBSP_LOOP_PING_PONG
+    TxpingPongIndex=RxpingPongIndex=0;
+#endif
     /* Initialize the OSAL */
     if (Osal_dataBufferInitMemory(BUFSIZE) < 0)
     {
@@ -406,6 +406,26 @@ void _task_mcbsp(void)
     }
 
     /* create the buffers required for the TX and RX operations */
+
+#ifdef MCBSP_LOOP_PING_PONG
+    /* create the ping pong buffers required for the TX and RX operations */
+    for (count = 0; count < (NUM_BUFS+1); count++)
+    {
+        bufRxPingPong[count] = (uint8_t *)Osal_mcbspDataBufferMalloc(REC_BUFSIZE);
+        bufTxPingPong[count] = (uint8_t *)Osal_mcbspDataBufferMalloc(BUFSIZE);
+
+        if (bufTxPingPong[count] == NULL)
+        {
+            System_printf ("Debug(Core %d): Error: Tx Ping pong Buffer (%d) Memory Allocation Failed\n", coreNum, count);
+            return;
+        }
+        if (bufRxPingPong[count] == NULL)
+        {
+            System_printf ("Debug(Core %d): Error: Rx Ping pong Buffer (%d) Memory Allocation Failed\n", coreNum, count);
+            return;
+        }
+    }
+#else
     for (count = 0; count < (NUM_BUFS); count++)
     {
         bufTx[count] = (uint8_t *)Osal_mcbspDataBufferMalloc(BUFSIZE);
@@ -422,6 +442,7 @@ void _task_mcbsp(void)
             return;
         }
     }
+#endif
 
 
     txFrameIndex=0;
@@ -430,36 +451,39 @@ void _task_mcbsp(void)
     reg_24 reg_24data;
     /* Fill the buffers with known data and transmit the same and
        check if the same pattern is received */
-    for (count = 0; count < (NUM_BUFS); count++)
+    for (count = 0; count < (NUM_BUFS+1); count++)
     {
-        memset((uint8_t *)bufTx[count], 0, BUFSIZE);
+        memset((uint8_t *)bufTxPingPong[count], 0, BUFSIZE);
         LMX2571_FM_CAL( 0,  206.75, 0);//415.125 	156.525;
-//        FSK_FAST_SPI(5);
         for (tempCount = 0; tempCount < 162; tempCount++){
         		reg_24data.all=lmx_init[tempCount/3];
-               	((uint8_t *)bufTx[count])[tempCount++] = reg_24data.dataBit.data0;
-               	((uint8_t *)bufTx[count])[tempCount++] = reg_24data.dataBit.data1;
-               	((uint8_t *)bufTx[count])[tempCount]   = reg_24data.dataBit.data2;
+               	((uint8_t *)bufTxPingPong[count])[tempCount++] = reg_24data.dataBit.data0;
+               	((uint8_t *)bufTxPingPong[count])[tempCount++] = reg_24data.dataBit.data1;
+               	((uint8_t *)bufTxPingPong[count])[tempCount]   = reg_24data.dataBit.data2;
         }
         for (tempCount = 162; tempCount < BUFSIZE; tempCount++){
-        	((uint8_t *)bufTx[count])[tempCount++] =0x80;
-        	((uint8_t *)bufTx[count])[tempCount++] =0x80;
-        	((uint8_t *)bufTx[count])[tempCount]   = 0x80;
+        	((uint8_t *)bufTxPingPong[count])[tempCount++] =0x80;
+        	((uint8_t *)bufTxPingPong[count])[tempCount++] =0x80;
+        	((uint8_t *)bufTxPingPong[count])[tempCount]   = 0x80;
         }
-
     }
     memset(buf_transmit,0x80, BUFSIZE);
 
     /* Start main loop to iterate through frames */
-    while(debugVar)
-    {
+//    while(debugVar)
+//    {
         /* submit frames to the driver */
-        for (count = init_count; count < NUM_BUFS; count++)
+        for (count = 0; count < NUM_BUFS+1; count++)
         {
-            memset((uint8_t *)bufRx[count], 0, REC_BUFSIZE);
             /* RX frame processing */
             rxFrame[rxFrameIndex].cmd = Mcbsp_IOBuf_Cmd_READ;
+#ifdef	MCBSP_LOOP_PING_PONG
+            memset((uint8_t *)bufRxPingPong[count], 0, REC_BUFSIZE);
+            rxFrame[rxFrameIndex].addr = (void*)bufRxPingPong[count];
+#else
+            memset((uint8_t *)bufRx[count], 0, REC_BUFSIZE);
             rxFrame[rxFrameIndex].addr = (void*)bufRx[count];
+#endif
             rxFrame[rxFrameIndex].size = REC_BUFSIZE;
             rxFrame[rxFrameIndex].arg = (uint32_t) hMcbspRxChan;
             rxFrame[rxFrameIndex].status = MCBSP_STATUS_COMPLETED;
@@ -476,7 +500,11 @@ void _task_mcbsp(void)
 
 
             txFrame[txFrameIndex].cmd = Mcbsp_IOBuf_Cmd_WRITE;
+#ifdef	MCBSP_LOOP_PING_PONG
+            txFrame[txFrameIndex].addr = (void*)bufTxPingPong[count];
+#else
             txFrame[txFrameIndex].addr = (void*)bufTx[count];
+#endif
             txFrame[txFrameIndex].size = BUFSIZE;
             txFrame[txFrameIndex].arg = (uint32_t)hMcbspTxChan;
             txFrame[txFrameIndex].status = MCBSP_STATUS_COMPLETED;
@@ -491,50 +519,20 @@ void _task_mcbsp(void)
             txFrameIndex = (txFrameIndex >= (NUM_OF_MCBSP_FRAMES)) ? 0 : txFrameIndex;
             txSubmitCount++;
 
-            while (1){
-            	if (edmaRxDone == 1 && edmaTxDone == 1){
-            		 edmaTxDone =edmaRxDone = 0;
 
-            		 if(tempdata==0){
-            		     tempdata=1;
-            		     break;
-            		 }
-                }
-
-            	Task_sleep(3);
             }
-
-//            while (1){
-//                   	if (edmaRxDone == 1 ){
-//                   		edmaRxDone = 0;
+//     }// end of submit
+    	while (1){
+//            	if (edmaRxDone == 1 && edmaTxDone == 1){
+//            		 edmaTxDone =edmaRxDone = 0;
 //
-//                   		 if(tempdata==0){
-//                   		     tempdata=1;
-//                   		     break;
-//                   		 }
-//                       }
-//
-//                   	Task_sleep(5);
-//                   }
-
-
-//            while (1){
-//                if (edmaTxDone == 1)
-//                {
-//                       edmaTxDone = 0; /* Reset for next iteration */
-//                       if(tempdata==0){
-//                    	   tempdata=1;
-//                    	   break;
-//                       }
+//            		 if(tempdata==0){
+//            		     tempdata=1;
+//            		     break;
+//            		 }
 //                }
-//
-//                Task_sleep(5);
-//           }
-
-
-        }// end of submit
-
-    }
+    		Task_sleep(3);
+    	}
     return;
 }
 

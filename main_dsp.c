@@ -16,7 +16,7 @@
 
 CSL_GpioRegsOvly     gpioRegs = (CSL_GpioRegsOvly)(CSL_GPIO_0_REGS);
 
-//unsigned short buf_temp[9600];
+unsigned short buf_temp[9600];
 
 short intersam[RPE_DATA_SIZE/2*5];
 
@@ -659,10 +659,10 @@ Void task_enque(UArg arg0, UArg arg1)
 {
 	extern audioQueue audioQ;
 	extern AudioQueue_DATA_TYPE audioQueueRxBuf[];
-//	int i=0;
+	int i=0;
 	unsigned short buf_16[REC_BUFSIZE/3] = {0};
 
-//	static short index;
+	static short index;
 
 //	audioQueueInit(&audioQ, AUDIO_QUEUE_RX_LENGTH, audioQueueRxBuf);
 
@@ -673,14 +673,14 @@ Void task_enque(UArg arg0, UArg arg1)
 		data_send((uint8_t*)buf_de);
 
 //		//data enqueue
-//		for(i = 0; i < REC_BUFSIZE/3; i++)
-//		{
+		for(i = 0; i < REC_BUFSIZE/15; i++)
+		{
 //			enAudioQueue(&audioQ, buf_16[i]);
-//
-////			buf_temp[index++]=buf_16[i];
-////			if(index>=9600)
-////					index=0;
-//		}
+
+			buf_temp[index++]=buf_de[i];
+			if(index>=9599)
+					index=0;
+		}
 
 	}while(1);
 }
@@ -823,6 +823,7 @@ void dsp_logic()
     if(status>=0){
     		switch (msg_temp.type){
     		case LMX2571_TX:
+    			rpe_flush(prpe,RPE_ENDPOINT_WRITER,TRUE,&attr);//返回 flush的数据量
     			CSL_FINS(gpioRegs->BANK[3].OUT_DATA,GPIO_OUT_DATA_OUT7,0);//RX_SW
     			CSL_FINS(gpioRegs->BANK[3].OUT_DATA,GPIO_OUT_DATA_OUT6,1); //TX_SW
     			CSL_FINS(gpioRegs->BANK[3].OUT_DATA,GPIO_OUT_DATA_OUT13,1); //T:F2
