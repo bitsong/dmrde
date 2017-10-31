@@ -16,7 +16,7 @@
 
 CSL_GpioRegsOvly     gpioRegs = (CSL_GpioRegsOvly)(CSL_GPIO_0_REGS);
 
-unsigned short buf_temp[9600];
+//unsigned short buf_temp[9600];
 
 short intersam[RPE_DATA_SIZE/2*5];
 
@@ -36,6 +36,9 @@ float transmit_power;
 
 Queue q;
 
+extern void* bufRxPingPong[2];
+extern void* bufTxPingPong[2];
+extern int TxpingPongIndex,RxpingPongIndex;
 
 /* private functions */
 Void smain(UArg arg0, UArg arg1);
@@ -55,6 +58,8 @@ void sys_configure(void);
 void dsp_logic();
 Void hwiFxn(UArg arg);
 Void DSCRxTask(UArg a0, UArg a1);
+
+QUEUE_DATA_TYPE    dsc_buf[DSC_RX_BUF_LEN];
 
 /*
  *  ======== main =========
@@ -106,7 +111,7 @@ Void smain(UArg arg0, UArg arg1)
        	return;
     }
 
-    queueInit(&q, DSC_RX_BUF_LEN);
+    queueInit(&q, DSC_RX_BUF_LEN, dsc_buf);
 
     sem1=Semaphore_create(0,NULL,&eb);
     sem2=Semaphore_create(0,NULL,&eb);
@@ -129,6 +134,19 @@ Void smain(UArg arg0, UArg arg1)
     transmit_power=eeprom_data[39];
 
     //task create
+
+    Error_init(&eb);
+    Task_Params_init(&taskParams);
+    taskParams.instance->name = "task_enque";
+    taskParams.arg0 = (UArg)arg0;
+    taskParams.arg1 = (UArg)arg1;
+    taskParams.stackSize = 0x4000;
+    taskParams.priority=15;
+    Task_create(task_enque, &taskParams, &eb);
+    if(Error_check(&eb)) {
+    	System_abort("main: failed to create application 2 thread");
+    }
+
     Error_init(&eb);
     Task_Params_init(&taskParams);
     taskParams.instance->name = "task_receive";
@@ -152,16 +170,7 @@ Void smain(UArg arg0, UArg arg1)
     	System_abort("main: failed to create application 1 thread");
     }
 
-    Error_init(&eb);
-    Task_Params_init(&taskParams);
-    taskParams.instance->name = "task_enque";
-    taskParams.arg0 = (UArg)arg0;
-    taskParams.arg1 = (UArg)arg1;
-    taskParams.stackSize = 0x4000;
-    Task_create(task_enque, &taskParams, &eb);
-    if(Error_check(&eb)) {
-    	System_abort("main: failed to create application 2 thread");
-    }
+
 
 //    Error_init(&eb);
 //    Task_Params_init(&taskParams);
@@ -176,7 +185,7 @@ Void smain(UArg arg0, UArg arg1)
 #if 1
 //
     Task_Params_init(&taskParams);
-//	taskParams.priority = 1;
+	taskParams.priority = 1;
     taskParams.instance->name = "DSCRxTask";
     taskParams.stackSize = 0x5000;
     Task_create(DSCRxTask, &taskParams, NULL);
@@ -207,6 +216,18 @@ Void smain(UArg arg0, UArg arg1)
 //    	Task_yield();
 
     	RSSI_db=-24.288+10*log10(RSSI)-eeprom_data[84];//120      -125_10
+
+    	//fitting : y = - 0.16365*x^{2} - 36.798*x - 2182.9
+    	if(RSSI_db<-115.4)
+//    		RSSI_db=-0.16365*RSSI_db*RSSI_db-36.798*RSSI_db-2182.9;
+    		//y = 0.011574*x^{3} + 3.9377*x^{2} + 447.59*x + 16885
+//    		RSSI_db=0.011574*powi(RSSI_db,3)+ 3.9377*powi(RSSI_db,2)+ 447.59*RSSI_db + 16885;
+    		//y = 0.071842*x^{3} + 25.165*x^{2} + 2939.6*x + 1.144e+05
+    		RSSI_db=0.071842*powi(RSSI_db,3)+ 25.165*powi(RSSI_db,2)+ 2939.6*RSSI_db + 114397;
+//    	if(RSSI_db<-117.5)
+//    		RSSI_db +=(RSSI_db+115);
+//    	else if(RSSI_db<-115)
+//    		RSSI_db +=0.5*(RSSI_db+115);
 //    	vol_A=0.061*sqrt(2*RSSI);
     	dsp_logic();
     }
@@ -225,13 +246,18 @@ Void smain(UArg arg0, UArg arg1)
 /* Here on dsc_timer interrupt */
 Void hwiFxn(UArg arg)
 {
+	static int flag;
+
 	 /* get the GIPO6_5 value		                                           */
-	 if(CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1)==1){
-		 enQueue(&q, 1);
-	 }
-	 else{
-		 enQueue(&q, 0);
-	 }
+	 flag=CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1);
+
+//	 {
+		 enQueue(&q, flag);
+//	 }
+//	 else{
+//		 enQueue(&q, 0);
+//	 }
+//	enQueue(&q, CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1));
 }
 
 /*
@@ -251,6 +277,8 @@ Void task_receive(UArg arg0, UArg arg1)
 	uint8_t 		*buf = NULL;
     uint32_t		size;
     Int status=0;
+//    static int txpingpongflag;
+
     buf_transmit=(unsigned char*)malloc(RPE_DATA_SIZE/2*15);
 
     log_info("-->task_receive:");
@@ -258,6 +286,7 @@ Void task_receive(UArg arg0, UArg arg1)
     while(1){
     		Semaphore_pend(sem2, BIOS_WAIT_FOREVER);
 
+//    		txpingpongflag=(TxpingPongIndex)?0:1;
     		size = RPE_DATA_SIZE;
     		status = rpe_acquire_reader(prpe,(rpe_buf_t*)&buf,&size);
     		if(status == ERPE_B_PENDINGATTRIBUTE){
@@ -291,7 +320,7 @@ Void task_receive(UArg arg0, UArg arg1)
 
 
     		data_process((short*)buf, buf_transmit, size);
-
+//    		data_process((short*)buf, (unsigned char*)bufTxPingPong[txpingpongflag], size);
 
     		status = rpe_release_reader_safe(prpe,buf,size);
     		if(status < 0){
@@ -305,48 +334,28 @@ Void task_receive(UArg arg0, UArg arg1)
  *功能：信号发送时低通滤波
  *参数：inBuf:输入为240个数据的指针; outBuf:输出为低通滤波后数据指针; len:输入数据的长度（默认240）
  */
-short tempBuf[304] = {0};	//240+64
-
-void sendLowFreqFilter(short *inBuf,short *outBuf,short len)
+void LP_Filter(short *inBuf,short *outBuf)
 {
 	register short i = 0;
+	static float temp[272] = {0};
+	float coffe0=0.299496059427060,	coffe1=0.256986632618021, 	coffe2=0.150967710628479,	coffe3= 0.032995877067145,
+	coffe4=-0.045687558189818,		coffe5=-0.062214363053361,	coffe6=-0.030565720303875 , 	coffe7=0.012959340065669 ,
+	coffe8=0.035504661411791,  	coffe9=  0.026815438823179,	coffe10=0.000482815488849, 	coffe11=-0.020603625992256,
+	coffe12=-0.022150036648907, 		coffe13=-0.006883093026563,	coffe14=0.010689881755938,	coffe15=0.017054011686632,
+	coffe16= 0.009462869502823;
 
-//	float coffe0= 0.274359222240358, coffe1=0.241181466150155, coffe2=0.156134567192084,coffe3=0.055060450043507,
-//		coffe4=-0.023275459456141,coffe5=-0.055906398885724,coffe6=-0.044476160570719, coffe7=-0.010265971386949,
-//		coffe8=0.020269571908203,  coffe9=0.030227314205989,coffe10=0.019022089736789, coffe11=-0.001270205366588,
-//		coffe12=-0.015998538619177, coffe13=-0.017329264216821, coffe14=-0.007494844067617, coffe15=0.004821048965657,
-//		coffe16=0.011324222287550,coffe17= 0.009237547274474,coffe18= 0.001836190006871 ,coffe19= -0.004983913940164,
-//		coffe20= -0.007058493738798,coffe21=-0.004220501207019,coffe22=0.000531177568480 ,coffe23= 0.003720884004466,
-//		coffe24=0.003753370771847 ,coffe25=0.001465530261336 ,coffe26= -0.001054426387385,coffe27=-0.002162717961628 ,
-//		coffe28= -0.001604314160974,coffe29= -0.000270161279237 ,coffe30=0.000741650125149 ,coffe31=0.000920156408832 ,coffe32=0.000484098004814 ;
-	float coffe0= 0.241573335759647, coffe1=0.218992079362489, coffe2=0.158786037164879,coffe3=0.080575526092448,
-		coffe4=0.008380246927960,coffe5=-0.038458988032623,coffe6=-0.051951738731848, coffe7=-0.037107487691542,
-		coffe8=-0.008242081638380,  coffe9=0.018058541361647,coffe10=0.030020320206990, coffe11=0.024772571504055,
-		coffe12=0.008015396412343, coffe13=-0.010053106283831, coffe14=-0.020248128104113, coffe15=-0.018639306968899 ,
-		coffe16=-0.007705466021025 ,coffe17= 0.005756438342760,coffe18= 0.014563107850161 ,coffe19= 0.014782237828384,
-		coffe20= 0.007319457637066,coffe21=-0.003101782015224,coffe22=-0.010771320330543 ,coffe23= -0.012016062724458,
-		coffe24=-0.006866221876609 ,coffe25=0.001344551953574 ,coffe26= 0.008034112390769,coffe27=0.009865772059648 ,
-		coffe28= 0.006356036017521,coffe29= -0.000149026564685 ,coffe30=-0.005963374242723 ,coffe31=-0.008108015223888 ,coffe32=-0.005800307730482 ;
-	//组合数据：前64位放上一帧数据末尾64个，后240放最新数据，形成流处理方式
-
-	for(i=0;i<240;i++)
-		tempBuf[i+64] = inBuf[i];
-
-
-	for(i=0;i<len;i++)
-		outBuf[i] = tempBuf[i+32]*coffe0
-			+(tempBuf[i+33]+tempBuf[i+31])*coffe1  + (tempBuf[i+34]+tempBuf[i+30])*coffe2  + (tempBuf[i+35]+tempBuf[i+29])*coffe3  + (tempBuf[i+36]+tempBuf[i+28])*coffe4
-			+(tempBuf[i+37]+tempBuf[i+27])*coffe5  + (tempBuf[i+38]+tempBuf[i+26])*coffe6  + (tempBuf[i+39]+tempBuf[i+25])*coffe7  + (tempBuf[i+40]+tempBuf[i+24])*coffe8
-			+(tempBuf[i+41]+tempBuf[i+23])*coffe9  + (tempBuf[i+42]+tempBuf[i+22])*coffe10 + (tempBuf[i+43]+tempBuf[i+21])*coffe11 + (tempBuf[i+44]+tempBuf[i+20])*coffe12
-			+(tempBuf[i+45]+tempBuf[i+19])*coffe13 + (tempBuf[i+46]+tempBuf[i+18])*coffe14 + (tempBuf[i+47]+tempBuf[i+17])*coffe15 + (tempBuf[i+48]+tempBuf[i+16])*coffe16
-			+(tempBuf[i+49]+tempBuf[i+15])*coffe17 + (tempBuf[i+50]+tempBuf[i+14])*coffe18 + (tempBuf[i+51]+tempBuf[i+13])*coffe19 + (tempBuf[i+52]+tempBuf[i+12])*coffe20
-			+(tempBuf[i+53]+tempBuf[i+11])*coffe21 + (tempBuf[i+54]+tempBuf[i+10])*coffe22 + (tempBuf[i+55]+tempBuf[i+9])*coffe23  + (tempBuf[i+56]+tempBuf[i+8])*coffe24
-			+(tempBuf[i+57]+tempBuf[i+7])*coffe25  + (tempBuf[i+58]+tempBuf[i+6])*coffe26  + (tempBuf[i+59]+tempBuf[i+5])*coffe27  + (tempBuf[i+60]+tempBuf[i+4])*coffe28
-			+(tempBuf[i+61]+tempBuf[i+3])*coffe29  + (tempBuf[i+62]+tempBuf[i+2])*coffe30  + (tempBuf[i+63]+tempBuf[i+1])*coffe31  + (tempBuf[i+64]+tempBuf[i])*coffe32;
-
-
-	for(i=0;i<64;i++)
-		tempBuf[i] = tempBuf[240+i];
+	for(i = 0; i < 32; ++i)
+		temp[i] = temp[240 + i];
+	for(i=0; i<240;i++)
+		temp[i+32] = inBuf[i];
+	//
+	for(i = 0; i < 240; ++i){
+		outBuf[i] = temp[i+16]*coffe0
+		+(temp[i+17]+temp[i+15])*coffe1 + (temp[i+18]+temp[i+14])*coffe2  + (temp[i+19]+temp[i+13])*coffe3  + (temp[i+20]+temp[i+12])*coffe4
+		+(temp[i+21]+temp[i+11])*coffe5 + (temp[i+22]+temp[i+10])*coffe6  + (temp[i+23]+temp[i+9])*coffe7   + (temp[i+24]+temp[i+8])*coffe8
+		+(temp[i+25]+temp[i+7])*coffe9  + (temp[i+26]+temp[i+6])*coffe10  + (temp[i+27]+temp[i+5])*coffe11  + (temp[i+28]+temp[i+4])*coffe12
+		+(temp[i+29]+temp[i+3])*coffe13 + (temp[i+30]+temp[i+2])*coffe14  + (temp[i+31]+temp[i+1])*coffe15  + (temp[i+32]+temp[i])*coffe16;
+	}
 }
 
 /*
@@ -413,13 +422,34 @@ void scopeLimit(short *inBuf,short len)
 	short i = 0;
 	for(i=0;i<len;i++)
 	{
-		if(inBuf[i]>=18000)
+		if(inBuf[i]>18000)
 			inBuf[i] = 18000;
-		else if(inBuf[i]<=-18000)
+		else if(inBuf[i]<-18000)
 			inBuf[i] = -18000;
 	}
 }
 
+void hpFilter(short *inBuf,short *outBuf)
+{
+	short i = 0;
+	static float x[242] = {0};
+	static float y[242] = {0};
+
+	x[0] = x[240];
+	x[1] = x[241];
+
+	y[0] = y[240];
+	y[1] = y[241];
+
+	for(i=0;i<240;i++)
+		x[i+2] = inBuf[i];
+
+	for(i=0;i<240;i++)
+		y[i+2] = 0.9816583*(x[i+2]-2*x[i+1]+x[i]) + 1.9629801*y[i+1] - 0.9636530*y[i];
+
+	for(i=0;i<240;i++)
+		outBuf[i] = y[i+2];
+}
 
 
 /*
@@ -428,11 +458,13 @@ void scopeLimit(short *inBuf,short len)
  */
 void dataFilterAndTrans(short *inBuf,short *outBuf,short len)
 {
-	delDc(inBuf,len);
+//	delDc(inBuf,len);
+	hpFilter(inBuf, inBuf);
 	sendPreEmphasis(inBuf,outBuf,len);		//input:outBuf,output:inBuf(inBuf as a temp buffer)
-	scopeLimit(outBuf,len);
-	sendLowFreqFilter(outBuf,inBuf,len);
-	from24To120(inBuf,outBuf,len);
+	LP_Filter(outBuf,outBuf);
+//	scopeLimit(inBuf,len);
+//	sendLowFreqFilter(inBuf,outBuf,len);
+	from24To120(outBuf,outBuf,len);
 }
 
 
@@ -659,29 +691,31 @@ Void task_enque(UArg arg0, UArg arg1)
 {
 	extern audioQueue audioQ;
 	extern AudioQueue_DATA_TYPE audioQueueRxBuf[];
-	int i=0;
+//	int i=0;
+//	static short index
 	unsigned short buf_16[REC_BUFSIZE/3] = {0};
 
-	static short index;
+	static short pingpongflag;
 
 //	audioQueueInit(&audioQ, AUDIO_QUEUE_RX_LENGTH, audioQueueRxBuf);
 
 	do{
 		Semaphore_pend(sem1,BIOS_WAIT_FOREVER);
-		data_extract(buf_adc,(unsigned char*)buf_16);
+
+		pingpongflag=RxpingPongIndex?0:1;
+		data_extract((unsigned char*)bufRxPingPong[pingpongflag],(unsigned char*)buf_16);
 		Rx_process(buf_16,buf_de);
 		data_send((uint8_t*)buf_de);
 
 //		//data enqueue
-		for(i = 0; i < REC_BUFSIZE/15; i++)
-		{
-//			enAudioQueue(&audioQ, buf_16[i]);
-
-			buf_temp[index++]=buf_de[i];
-			if(index>=9599)
-					index=0;
-		}
-
+//		for(i = 0; i < REC_BUFSIZE/15; i++)
+//		{
+////			enAudioQueue(&audioQ, buf_16[i]);
+//
+//			buf_temp[index++]=buf_de[i];
+//			if(index>=9599)
+//					index=0;
+//		}
 	}while(1);
 }
 
@@ -994,8 +1028,8 @@ void dsp_logic()
     			transmit_power=eeprom_data[39];
     			break;
     		case RSSTH:
-    			RXSS_THRESHOLD=2*atoi(msg_temp.data.d)-115;
-    			if(-115==RXSS_THRESHOLD)
+    			RXSS_THRESHOLD=2*atoi(msg_temp.data.d)-125;
+    			if(-125==RXSS_THRESHOLD)
     				RXSS_THRESHOLD=-150;
     			break;
 

@@ -19,6 +19,7 @@ extern AudioQueue_DATA_TYPE audioQueueRxBuf[AUDIO_QUEUE_RX_LENGTH];
 #define ORDER_IF		64
 #define ORDER_LF		32
 #define ORDER_3K		32
+#define RSSI_AVR	10
 
 float tempIn_1[244] = {0};
 float tempOut_1[244] = {0};
@@ -332,6 +333,22 @@ float getRSSI(float* lfBufOut)
 	return squareCal / SAMPLE_SIZE;
 }
 
+float getRssiAvr(float* lfBufOut)
+{
+
+	static float arrRSSI[RSSI_AVR] = {0};
+	static char count;
+	char i=0;
+	float sun = 0;
+
+	if(count>=RSSI_AVR)
+		count =0;
+	arrRSSI[count++%RSSI_AVR] = getRSSI(lfBufOut);
+	for(i=0;i<RSSI_AVR;i++)
+		sun += arrRSSI[i];
+	return sun/RSSI_AVR;
+}
+
 void bandstopfilter(float *inBuf,float *outBuf)
 {
 	short i = 0;
@@ -376,12 +393,86 @@ void toShort(float *inBuf,short *outBuf)
 	for(i=0;i<SEND_SIZE;i++)
 	{
 		//lfBufOut[i] = lfBufOut[i] + ((lfBufOut[i]*lfBufOut[i]*lfBufOut[i])*0.1666667+((lfBufOut[i]*lfBufOut[i]*lfBufOut[i]*lfBufOut[i]*lfBufOut[i])*0.075));//����   y+1/6*y^3;
+		if(inBuf[i]>0.85)
+			inBuf[i]=0.85;
+		else if(inBuf[i]<-0.85)
+			inBuf[i]=-0.85;
 
-		outBuf[i] = (short)(inBuf[i]*0x3fff);
+		outBuf[i] = (short)(inBuf[i]*0x7fff);
+
 	}
 }
 
 
+void deDcAfterDetectFreq(float *inBuf,float *outBuf)
+{
+	short i = 0;
+	static float x[242] = {0};
+	static float y[242] = {0};
+
+	x[0] = x[240];
+	x[1] = x[241];
+
+	y[0] = y[240];
+	y[1] = y[241];
+
+	for(i=0;i<SEND_SIZE;i++)
+		x[i+2] = inBuf[i];
+
+	for(i=0;i<SEND_SIZE;i++)
+		y[i+2] = 0.954774*(x[i+2]-2*x[i+1]+x[i]) + 1.9075016*y[i+1] - 0.9115945*y[i];
+
+	for(i=0;i<SEND_SIZE;i++)
+		outBuf[i] = y[i+2];
+
+}
+
+void rx_HPFilter(float *inBuf,float *outBuf)
+{
+	short i = 0;
+	static float x[242] = {0};
+	static float y[242] = {0};
+
+	x[0] = x[240];
+	x[1] = x[241];
+
+	y[0] = y[240];
+	y[1] = y[241];
+
+	for(i=0;i<240;i++)
+		x[i+2] = inBuf[i];
+
+	for(i=0;i<240;i++)
+		y[i+2] = 0.9816583*(x[i+2]-2*x[i+1]+x[i]) + 1.9629801*y[i+1] - 0.9636530*y[i];
+
+	for(i=0;i<240;i++)
+		outBuf[i] = y[i+2];
+}
+
+
+void rx_LPFilter(float *inBuf,float *outBuf)
+{
+	register short i = 0;
+	static float temp[272] = {0};
+	float coffe0=0.299496059427060,	coffe1=0.256986632618021, 	coffe2=0.150967710628479,	coffe3= 0.032995877067145,
+	coffe4=-0.045687558189818,		coffe5=-0.062214363053361,	coffe6=-0.030565720303875 , 	coffe7=0.012959340065669 ,
+	coffe8=0.035504661411791,  	coffe9=  0.026815438823179,	coffe10=0.000482815488849, 	coffe11=-0.020603625992256,
+	coffe12=-0.022150036648907, 		coffe13=-0.006883093026563,	coffe14=0.010689881755938,	coffe15=0.017054011686632,
+	coffe16= 0.009462869502823;
+
+	for(i = 0; i < 32; ++i)
+		temp[i] = temp[240 + i];
+	for(i=0; i<240;i++)
+		temp[i+32] = inBuf[i];
+	//
+	for(i = 0; i < 240; ++i){
+		outBuf[i] = temp[i+16]*coffe0
+		+(temp[i+17]+temp[i+15])*coffe1 + (temp[i+18]+temp[i+14])*coffe2  + (temp[i+19]+temp[i+13])*coffe3  + (temp[i+20]+temp[i+12])*coffe4
+		+(temp[i+21]+temp[i+11])*coffe5 + (temp[i+22]+temp[i+10])*coffe6  + (temp[i+23]+temp[i+9])*coffe7   + (temp[i+24]+temp[i+8])*coffe8
+		+(temp[i+25]+temp[i+7])*coffe9  + (temp[i+26]+temp[i+6])*coffe10  + (temp[i+27]+temp[i+5])*coffe11  + (temp[i+28]+temp[i+4])*coffe12
+		+(temp[i+29]+temp[i+3])*coffe13 + (temp[i+30]+temp[i+2])*coffe14  + (temp[i+31]+temp[i+1])*coffe15  + (temp[i+32]+temp[i])*coffe16;
+	}
+}
 
 void Rx_process(unsigned short* ad_data,	short* de_data)
 {
@@ -392,18 +483,21 @@ void Rx_process(unsigned short* ad_data,	short* de_data)
 		deDc2(ad_data, deDcBufOut);
 
 		IF_Filter(deDcBufOut, ifBufOut);
-		RSSI = getRSSI(ifBufOut);
-		detectFreq(ifBufOut,lfBufOut);
+		RSSI = getRssiAvr(ifBufOut);
 
+		detectFreq(ifBufOut,lfBufOut);
+//				deDcAfterDetectFreq(lfBufOut, lfBufOut);
 //				delDcAfterPhaseDetector(lfBufOut,lfBufOut);
 //				iirFilterAfterDetectFreq(lfBufOut,lfBufOut);
 				//phaseDetector(ifBufOut);//自积
 				//delDcAfterPhaseDetector();
 				//lowFreqFilter(ifBufOut,lfBufOut);//低频滤波
+		rx_LPFilter(lfBufOut, lfBufOut);
 		deEmphasis(lfBufOut ,deEmBufOut);
+		rx_HPFilter(deEmBufOut, deEmBufOut);
 //				iirFilterAfterDetectFreq(deEmBufOut,deEmBufOut);
 //				bandstopfilter(lfBufOut,lfBufOut);
-		bandstopfilter3k(deEmBufOut,deEmBufOut);
+		//		bandstopfilter3k(lfBufOut,deEmBufOut);
 		toShort(deEmBufOut,de_data);
 
 		timeTotal=Clock_getTicks()-timeTotal;

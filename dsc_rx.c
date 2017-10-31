@@ -17,6 +17,7 @@
 
 
 /************************************************** 变量定义 **************************************************/
+//static UChar   frameHeadPatt[DSC_FRAME_HEAD_DOTPAT] = {0,1,0,1,0,1,0,1,0,1,0,1};
 UChar dscInformationLen = 0;//dscInformationLen        22  //该值也可设为21，需根据ECC计算修改----------------------------------------
 
 //static UShort  frameHeadPhase[DSC_FRAME_HEAD_SLOT] = {0x02F9, 0x03D9, 0x02F9, 0x01DA, 0x02F9, 0x02DA, \
@@ -28,7 +29,7 @@ UChar dscInformationLen = 0;//dscInformationLen        22  //该值也可设为2
 //static UShort  frameHeadPhase[DSC_FRAME_HEAD_SLOT] = {0x027D, 0x026F, 0x027D};
 
 
-static UShort  frameHeadPhase[DSC_FRAME_HEAD_SLOT] = {0x027D, 0x026F, 0x027D, 0x16E};
+//static UShort  frameHeadPhase[DSC_FRAME_HEAD_SLOT] = {0x027D, 0x026F, 0x027D, 0x16E};
 
 //匹配帧头buf
 static QUEUE_DATA_TYPE   carelessHeadMat[CARELESS_HEAD_LEN] =
@@ -191,21 +192,22 @@ static UChar  DSCSendBuf[DSC_SEND_DATA_LEN] = {0};
 static UShort carelessMatch(Queue *q, QUEUE_DATA_TYPE * matchFrameHead, UShort startPosition,UShort len)
 {
 	UShort i = 0;
-	UShort matchResult = 0;
+	UShort matchResult_g = 0;
 	QUEUE_DATA_TYPE temp = 0;
+	matchResult_g = 0;
 	for(i = 0; i < len; ++i){
         temp = q->buf[(i*7 + startPosition)   & DSC_RX_BUF_LEN_1];  //直接访问队列中的元素
 		if(temp == matchFrameHead[i])
-			++matchResult;
-		else {  //不相同减1
-			if(matchResult == 0)
-				matchResult = 0;
-			else
-				--matchResult;
-		}
+			++matchResult_g;
+//		else {  //不相同减1
+//			if(matchResult_g == 0)
+//				matchResult_g = 0;
+//			else
+//				--matchResult_g;
+		//}
 	}
 
-	return matchResult;
+	return matchResult_g;
 }
 
 
@@ -263,99 +265,78 @@ static UShort oneMatch(Queue *q, QUEUE_DATA_TYPE * matchFrameHead, UShort startP
 //
 //	return FAIL;   //匹配失败
 //}
-
-//===================================================================================================================
-//UShort MATCH_FRAME_HEAD_LEN = 0;
-
 /*
  * 功能:匹配帧头
  */
 static UShort matchHead(Queue *q, QUEUE_DATA_TYPE * matchFrameHead)
 {
-	#define CAREFUL_WIDTH	13	//6+1+6
 	UShort len = queueLength(q);
 	float  matchLen = 0;
-	short carelessMatchRate=0;
-	//UShort maxMatchRate = 0;//最大相关
-	short i=0,j=0;
-	short matchLeft=-32767,matchRight;
+	short carelessMatchRate=0,carefulMatchRate;
+	short maxMatchRate = 0;
+	short i=0,j=0,k=0;
 	char temp_j = 0;
-//	UShort i = 0;
-//	QUEUE_DATA_TYPE temp = 0;
-	UInt32 time = 0;
-	if(len >= MATCH_FRAME_HEAD_LEN*2)
+	UInt32 time =0;
+	if(len >= DSC_RX_BUF_LEN_HALF)																//wait until enough length;
 	{ //队列中获取的比特长度大于2倍的 MATCH_FRAME_HEAD_LEN
-
 		time=Clock_getTicks();
-		matchLen = MATCH_FRAME_HEAD_LEN/DSC_SAMPLE_SCALE;//len - MATCH_FRAME_HEAD_LEN;
+		matchLen = (len - MATCH_FRAME_HEAD_LEN-7)/3;
 		for(i=0;i<matchLen;i++)																//detect 0~(MATCH_FRAME_HEAD_LEN/7+1)
-		{
-			carelessMatchRate = carelessMatch(q,carelessHeadMat,q->front+(i*7)+3,CARELESS_HEAD_LEN);	//start position is q->front+3(middle sample : 3,10,17...)
+		{//q->buf
+			carelessMatchRate = carelessMatch(q,carelessHeadMat,q->front+3,CARELESS_HEAD_LEN);	//start position is q->front+3(middle sample : 3,10,17...)
 			if(carelessMatchRate >= CARELESS_HAD_MATCH_LEN)									//40 has matched 35
 			{
-				for(j=-6;j<=6;j++)															//find max value  6-1-6
+				for(j=-3;j<=3;j++)															//find max value  2-1-6
 				{
-					if(i==0 && j<=-3)	j=-3;
-					matchRight = oneMatch(q,matchFrameHead,q->front+(i*7)+3+j,MATCH_FRAME_HEAD_LEN);
-					if(matchRight>matchLeft && matchRight>=MATCH_FRAME_HEAD_LEN-30)
+					carefulMatchRate = oneMatch(q,matchFrameHead,q->front+3+j,MATCH_FRAME_HEAD_LEN);
+					if(carefulMatchRate>=MATCH_FRAME_HEAD_LEN-50)
 					{
-						temp_j = j;
-						matchLeft = matchRight;
+						if(carefulMatchRate>maxMatchRate)
+						{
+							maxMatchRate = carefulMatchRate;
+							temp_j = j;
+						}
+						else
+							break;
 					}
-					else if(matchRight<matchLeft)
-						break;
 				}
-				if(matchLeft>-32767)
+				if(maxMatchRate>0)
 				{
-					for(j=0;j<i*7+3+temp_j;j++)										//if matched success,delete queue size
+					for(k=0;k<3+temp_j;k++)										//if matched success,delete queue size
 						deQueue(q);
-					return OK;
+					return OK;														//match success
 				}
+				else
+					for(j=0;j<3;j++)										//careless success,but careful unsuccess
+						deQueue(q);
 			}
+			else
+				for(j=0;j<3;j++)										//if matched unsuccessfully,delete queue size
+					deQueue(q);
 		}
 
-//		while(matchLen > 0){
-//			--matchLen;
-//			//matchPosition = q->front;
-//			matchRate = oneMatch(q, matchFrameHead, q->front,MATCH_FRAME_HEAD_LEN);
-//			if(matchRate > MATCH_FRAME_HEAD_LEN - 30)		//280匹配200个
-//			{
-//				if(matchRate >= oneMatch(q, matchFrameHead, (q->front+1)&DSC_RX_BUF_LEN_1),MATCH_FRAME_HEAD_LEN)//当为最大相关
-//				{
-//					//	for(j=0;j<MATCH_FRAME_HEAD_LEN;j++)
-//					//	{
-//						//if((j%7==0) && (j!=0))
-//						//	printf(" ");
-//						//if(j%70==0)
-//						//	printf("\n");
-//						//printf("%d",q->buf[(q->front+j)&0x3fff]);
-//				//		}
-//					//printf("\n");
-//					return OK;
-//				}
-//			}
-//			deQueue(q); //将匹配过的元素从队列中弹出
-//		}
 		time=Clock_getTicks()-time;
-		for(j=0;j<MATCH_FRAME_HEAD_LEN;j++)										//if matched success,delete queue size
-			deQueue(q);
-		//Task_sleep(20);
+		return FAIL;												//match unsuccessful
 	}
-	return FAIL;   //匹配失败
+	else
+	{
+		Task_sleep(20);												//no enough length,need delay 32ms,wait 40*0.8333;
+		return FAIL;
+	}
 }
 
 //===================================================================================================================
 /*
  * 功能：填充用作帧头的相位调整序列部分
  */
-static UShort fillFrame_Head(UShort *src, UShort *des, UShort startPostion)
-{
-	UShort i = 0;
-	for(i = 0; i < DSC_FRAME_HEAD_SLOT; ++i){
-		des[startPostion + i] = src[i];
-	}
-	return i;
-}
+//static UShort fillFrame_Head(UShort *src, UShort *des, UShort startPostion)
+//{
+//	UShort i = 0;
+//	for(i = 0; i < DSC_FRAME_HEAD_SLOT; ++i){
+//		des[startPostion + i] = src[i];
+//	}
+//	return i;
+//}
 
 
 /*
@@ -363,7 +344,7 @@ static UShort fillFrame_Head(UShort *src, UShort *des, UShort startPostion)
  */
 static void fillFrame_Queue(Queue *q, UShort *des, UShort startPosition)
 {
-	UShort len = DSC_RX_BUF_LEN_HALF - MATCH_FRAME_HEAD_SLOT_LEN; //从Queue获取的比特位长度
+	UShort len = DSC_RX_BUF_LEN_HALF;// - MATCH_FRAME_HEAD_SLOT_LEN; //从Queue获取的比特位长度
 	//UShort len = DSC_RX_BUF_LEN_HALF;
 	UShort count1 = 0;
 	UShort count2 = 0;
@@ -403,11 +384,13 @@ static void fillFrame_Queue(Queue *q, UShort *des, UShort startPosition)
 /*
  *功能：获取DSC_FRAME_LENGTH字节的标准DSC帧
  */
+int testcount;
 static UShort getNormalFrame(Queue *q, UShort *frameBuf)
 {
 	UShort startPosition = 0;
 	UShort len = queueLength(q);
-	UShort i = 0;
+//	UShort i = 0;
+
 
 	//队列中有一个完整的帧数据
 	//if(1){
@@ -416,15 +399,15 @@ static UShort getNormalFrame(Queue *q, UShort *frameBuf)
 		// key=Hwi_disable();
 		// Timer_stop(timer);
 
-		i = 0;
+//		i = 0;
 
 		//将匹配帧头从队列中弹出
-		for(i = 0; i < MATCH_FRAME_HEAD_LEN; ++i)
-			deQueue(q);
+//		for(i = 0; i < MATCH_FRAME_HEAD_LEN; ++i)
+//			deQueue(q);
 
 
 		//填充用作帧头的相位调整序列部分
-		startPosition = fillFrame_Head(frameHeadPhase, frameBuf, startPosition);
+//		startPosition = fillFrame_Head(frameHeadPhase, frameBuf, startPosition);
 
 		//填充来自队列中的帧信息
 		fillFrame_Queue(q, frameBuf, startPosition);
@@ -433,6 +416,7 @@ static UShort getNormalFrame(Queue *q, UShort *frameBuf)
 //			printf("count = %d\n",count);
 //			count = 0;
 //		}
+
 		return 1; //填充成功
 	}
 
@@ -487,6 +471,17 @@ UChar  getInformationLen(const UShort *frameBuf)
 		}
 	}
 	return 0;
+}
+
+/*
+ * 功能：去除队列内数据
+ * 参数：size:去除数据长度
+ */
+void abandonQueue(Queue *q,UShort size)
+{
+	UShort i;
+	for(i=0;i<size;i++)
+		deQueue(q);
 }
 
 /*
@@ -657,6 +652,7 @@ void package(const UShort *in, UChar *out)
 {
 	UShort  i = 0;
 	UShort  j = 0;
+//	UShort  k = 0;
 
 	//格式帧头
 	//out[i++] = '#';
@@ -719,10 +715,15 @@ extern Void hwiFxn(UArg arg);
 dsc_message_t *msg_dsc_se;
 
 
+
+
 //UShort buf[DSC_FRAME_LENGTH] = {0};
 /*
  *功能：DSC接收主任务
  */
+
+int sendcount1,sendcount2,fixcount;
+
 void DSC_RX(Queue *q)
 {
 	UShort matchFrameHeadFlag = FAIL;  //帧头匹配成功标志
@@ -737,7 +738,6 @@ void DSC_RX(Queue *q)
 		/****　匹配帧头  ****/
 		if(matchFrameHeadFlag == FAIL)
 		{
-			Task_sleep(18);//delay 32ms,wait 40*0.8333;
 			matchFrameHeadFlag = matchHead(q, dscFrameHeadMat);
 		}
 		else
@@ -746,11 +746,13 @@ void DSC_RX(Queue *q)
 			getFrameComFlag = getNormalFrame(q, frameBuf);
 //
 			if(getFrameComFlag == 1){
+				testcount++;
 				//printf("get complete frame(62 short) ok!\n");
 				getFrameComFlag = 0;
 				matchFrameHeadFlag = FAIL;
 				//获取有效信息长度，并根据该长度修改内存
 				dscInformationLen = getInformationLen(frameBuf);
+				abandonQueue(q,(dscInformationLen+9) * 2 * DSC_SAMPLE_SCALE * SLOT_BIT_NUM);//delete the information data
 //				if(dscInformationLen==0)
 //					printf("information had received error\n");
 				DSCInformation = (UShort*)realloc(DSCInformation,dscInformationLen*sizeof(UShort));
@@ -781,10 +783,11 @@ void DSC_RX(Queue *q)
 					msg_dsc_se->data.mid=67;
 					msg_dsc_se->data.dsc_len = dscInformationLen;
 					status1=messageq_send(&msgq[1],(messageq_msg_t)msg_dsc_se,0,0,0);
-	    			if(status1<0){
-	    			    log_error("message send error");
-	    			    message_free(msg_dsc_se);
-	    			}
+					if(status1>=0)
+						sendcount1++;
+					else
+						log_error("send1 error");
+
 					printInf(DSCSendBuf);
 				}
 				else if(status == 2){ //打包DSCInformationCopy
@@ -801,20 +804,21 @@ void DSC_RX(Queue *q)
 					msg_dsc_se->data.mid=67;
 					msg_dsc_se->data.dsc_len = dscInformationLen;
 					status1=messageq_send(&msgq[1],(messageq_msg_t)msg_dsc_se,0,0,0);
-	    			if(status1<0){
-	    			    log_error("message send error");
-	    			    message_free(msg_dsc_se);
-	    			}
+					if(status1>=0)
+						sendcount2++;
+					else
+						log_error("send2 error");
 					printInf(DSCSendBuf);
 				}
 				else {  //信息出错并且无法修复
+					fixcount++;
 					status = 0;
 				}
 			}
-//			else
-//			{
-//				Task_sleep(10);//sleep
-//			}
+			else
+			{
+				Task_sleep(10);//sleep
+			}
 		}		
 	}
 	//free(DSCInformation);

@@ -7,21 +7,17 @@
 //#define AUDIO_QUEUE_RX_LENGTH   131072
 AudioQueue_DATA_TYPE audioQueueRxBuf[AUDIO_QUEUE_RX_LENGTH] = {0};
 
-
-
-
-
 /*
  * 功能：初始化队列
  */
-void queueInit(Queue * q, unsigned short size)
+void queueInit(Queue * q, unsigned short size, QUEUE_DATA_TYPE *buf)
 {
 	q->front = 0;
 	q->rear = 0;
 	q->capacity = 0;
 	q->size = size;
-	//q->buf = buf;
-	memset(q->buf,0,DSC_RX_BUF_LEN);
+	q->buf = buf;
+//	memset(q->buf,0,DSC_RX_BUF_LEN);
 }
 
 void audioQueueInit(audioQueue * q, Int size, AudioQueue_DATA_TYPE *buf)
@@ -64,7 +60,6 @@ state enQueue(Queue * q, QUEUE_DATA_TYPE data)
 	q->capacity ++;
     return OK;
 }
-
 
 state enAudioQueue(audioQueue * q, AudioQueue_DATA_TYPE data)
 {

@@ -98,10 +98,10 @@ void* bufRx[NUM_BUFS];
 void* bufTx[NUM_BUFS];
 
 #ifdef MCBSP_LOOP_PING_PONG
-#define INIT_SUBMIT_Q_CNT 2
+//#define INIT_SUBMIT_Q_CNT 2
 /* Ping pong buffers used to submit to Mcbsp lld, which will be used in a loop */
-void* bufRxPingPong[INIT_SUBMIT_Q_CNT];
-void* bufTxPingPong[INIT_SUBMIT_Q_CNT];
+void* bufRxPingPong[2];
+void* bufTxPingPong[2];
 
 int TxpingPongIndex,RxpingPongIndex;
 #endif
@@ -281,11 +281,11 @@ void mcbspAppCallback(void* arg, Mcbsp_IOBuf *ioBuf)
     mode = *pmode;
     if (mode == MCBSP_MODE_OUTPUT)
     {
-    	if(ioBuf) {
-            num_tx_Call_backs++;
-            edmaTxDone = 1;
-        }else
-            txunderflowcnt++;
+//    	if(ioBuf) {
+//            num_tx_Call_backs++;
+//            edmaTxDone = 1;
+//        }else
+//            txunderflowcnt++;
     	memcpy((unsigned char*)bufTxPingPong[TxpingPongIndex],buf_transmit,BUFSIZE);
     	TxpingPongIndex=(TxpingPongIndex)?0:1;
     	if(1==tx_flag)
@@ -293,12 +293,12 @@ void mcbspAppCallback(void* arg, Mcbsp_IOBuf *ioBuf)
     }
     else if (mode == MCBSP_MODE_INPUT)
     {
-        if(ioBuf) {
-            num_rx_Call_backs++;
-            edmaRxDone = 1;
-        }else
-            rxunderflowcnt++;
-        memcpy(buf_adc,(unsigned char*)bufRxPingPong[RxpingPongIndex],REC_BUFSIZE);
+//        if(ioBuf) {
+//            num_rx_Call_backs++;
+//            edmaRxDone = 1;
+//        }else
+//            rxunderflowcnt++;
+//        memcpy(buf_adc,(unsigned char*)bufRxPingPong[RxpingPongIndex],REC_BUFSIZE);
         RxpingPongIndex=(RxpingPongIndex)?0:1;
         if(1==rx_flag)
         	Semaphore_post(sem1);
@@ -340,8 +340,8 @@ void _task_mcbsp(void)
 //    uint32_t mcbspTxDone = 0, mcbspRxDone = 0;
     Mcbsp_IOBuf txFrame[NUM_OF_MCBSP_FRAMES], rxFrame[NUM_OF_MCBSP_FRAMES];
     int txFrameIndex=0, rxFrameIndex=0;
-    int init_count=0;
-    uint32_t tempdata=0;
+//    int init_count=0;
+//    uint32_t tempdata=0;
 #ifdef MCBSP_LOOP_PING_PONG
     TxpingPongIndex=RxpingPongIndex=0;
 #endif
@@ -447,11 +447,11 @@ void _task_mcbsp(void)
 
     txFrameIndex=0;
     rxFrameIndex=0;
-    init_count=0;
+//    init_count=0;
     reg_24 reg_24data;
     /* Fill the buffers with known data and transmit the same and
        check if the same pattern is received */
-    for (count = 0; count < (NUM_BUFS+1); count++)
+    for (count = 0; count < (NUM_BUFS); count++)
     {
         memset((uint8_t *)bufTxPingPong[count], 0, BUFSIZE);
         LMX2571_FM_CAL( 0,  206.75, 0);//415.125 	156.525;
@@ -468,6 +468,7 @@ void _task_mcbsp(void)
         }
     }
     memset(buf_transmit,0x80, BUFSIZE);
+    memcpy((unsigned char*)bufTxPingPong[1],buf_transmit,BUFSIZE);
 
     /* Start main loop to iterate through frames */
 //    while(debugVar)
@@ -523,17 +524,9 @@ void _task_mcbsp(void)
             }
 //     }// end of submit
     	while (1){
-//            	if (edmaRxDone == 1 && edmaTxDone == 1){
-//            		 edmaTxDone =edmaRxDone = 0;
-//
-//            		 if(tempdata==0){
-//            		     tempdata=1;
-//            		     break;
-//            		 }
-//                }
-    		Task_sleep(3);
+    		Task_sleep(50);
     	}
-    return;
+//    return;
 }
 
 /*

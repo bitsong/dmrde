@@ -24,7 +24,7 @@ typedef struct Queue {
     UShort      front,rear;
 	UShort      capacity;
 	UShort      size;
-	QUEUE_DATA_TYPE    buf[DSC_RX_BUF_LEN];
+	QUEUE_DATA_TYPE    *buf;
 } Queue;
 
 typedef struct audioQueue {
@@ -34,8 +34,26 @@ typedef struct audioQueue {
 	AudioQueue_DATA_TYPE    *buf;
 } audioQueue;
 
+/*
+ * 功能：将data放入队尾
+ */
+//static inline state enQueue(Queue * q, QUEUE_DATA_TYPE data)
+//{
+//	//如果队列满
+//	if(q->front==(q->rear+1)&0x3fff)
+//    {
+////		printf("Warming:The queue is full!\n");
+//		return ERROR;
+//    }
+//
+//    q->buf[q->rear] = data;
+//    q->rear = (q->rear+1) & DSC_RX_BUF_LEN_1;
+//	q->capacity ++;
+//    return OK;
+//}
 
-void queueInit(Queue * q, UShort size);
+
+void queueInit(Queue * q, unsigned short size, QUEUE_DATA_TYPE *buf);
 state enQueue(Queue * q, QUEUE_DATA_TYPE data);
 QUEUE_DATA_TYPE deQueue(Queue * q);
 UShort queueLength(Queue *q);
