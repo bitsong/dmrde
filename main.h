@@ -81,6 +81,11 @@
 
 #define DATA_END		218
 
+#define WORK_MODE		190
+#define NORMAL_MODE		0
+#define ENHANCE_MODE	1
+#define DIGITAL_MODE	2
+
 
 //128.3
 //#define H_TXPWR			(1.615f)//1w(2.125f)//20w

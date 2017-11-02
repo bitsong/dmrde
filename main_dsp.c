@@ -33,7 +33,7 @@ Int RXSS_THRESHOLD =0;
 float RSSI_db=0;
 float channel_freq=0;
 float transmit_power;
-
+UShort working_mode;
 Queue q;
 
 extern void* bufRxPingPong[2];
@@ -217,17 +217,13 @@ Void smain(UArg arg0, UArg arg1)
 
     	RSSI_db=-24.288+10*log10(RSSI)-eeprom_data[84];//120      -125_10
 
-    	//fitting : y = - 0.16365*x^{2} - 36.798*x - 2182.9
     	if(RSSI_db<-115.4)
+    		//fitting : y = - 0.16365*x^{2} - 36.798*x - 2182.9
 //    		RSSI_db=-0.16365*RSSI_db*RSSI_db-36.798*RSSI_db-2182.9;
     		//y = 0.011574*x^{3} + 3.9377*x^{2} + 447.59*x + 16885
 //    		RSSI_db=0.011574*powi(RSSI_db,3)+ 3.9377*powi(RSSI_db,2)+ 447.59*RSSI_db + 16885;
     		//y = 0.071842*x^{3} + 25.165*x^{2} + 2939.6*x + 1.144e+05
     		RSSI_db=0.071842*powi(RSSI_db,3)+ 25.165*powi(RSSI_db,2)+ 2939.6*RSSI_db + 114397;
-//    	if(RSSI_db<-117.5)
-//    		RSSI_db +=(RSSI_db+115);
-//    	else if(RSSI_db<-115)
-//    		RSSI_db +=0.5*(RSSI_db+115);
 //    	vol_A=0.061*sqrt(2*RSSI);
     	dsp_logic();
     }
@@ -1218,6 +1214,9 @@ void dsp_logic()
     		case ADJ_RSSI:
 //    			delta_rssi=atoi(msg_temp.data.d);
     			eeprom_data[84]=atoi(msg_temp.data.d);
+    			break;
+    		case WORK_MODE:
+    			working_mode=atoi(msg_temp.data.d);
     			break;
     		default:
     			log_error("unknown message  type is %d", msg_temp.type);

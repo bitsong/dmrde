@@ -4,6 +4,7 @@
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Task.h>
 
+#include "main.h"
 #include "syslink_common.h"
 #include "audioDetectFrequency_rx.h"
 #include "audio_queue.h"
@@ -11,6 +12,7 @@
 
 audioQueue audioQ;
 extern AudioQueue_DATA_TYPE audioQueueRxBuf[AUDIO_QUEUE_RX_LENGTH];
+extern UShort working_mode;
 
 #define SAMPLE_SIZE		1200
 #define SEND_SIZE		240
@@ -200,6 +202,34 @@ void detectFreq(float *inBuf,float *outBuf)
 	}
 }
 
+void detectFreqEnhance(float *inBuf,float *outBuf)
+{
+	short i = 0;
+	static float temp[1203] = {0};
+	float m0,m1,m2,m3,m4;
+	float rssi0,rssi1,rssi2,rssi3,rssi4;
+
+	for(i=0;i<3;i++)
+		temp[i] = temp[SAMPLE_SIZE+i];
+	for(i=0;i<SAMPLE_SIZE;i++)
+		temp[i+3] = inBuf[i];
+
+	for(i=0;i<SEND_SIZE;i++)
+	{
+		m0 = temp[5*i+1]*temp[5*i+2] + 0.25*(temp[5*i+2]-temp[5*i])*(temp[5*i+3]-temp[5*i+1]);
+		m1 = temp[5*i+2]*temp[5*i+3] + 0.25*(temp[5*i+3]-temp[5*i+1])*(temp[5*i+4]-temp[5*i+2]);
+		m2 = temp[5*i+3]*temp[5*i+4] + 0.25*(temp[5*i+4]-temp[5*i+2])*(temp[5*i+5]-temp[5*i+3]);
+		m3 = temp[5*i+4]*temp[5*i+5] + 0.25*(temp[5*i+5]-temp[5*i+3])*(temp[5*i+6]-temp[5*i+4]);
+		m4 = temp[5*i+5]*temp[5*i+6] + 0.25*(temp[5*i+6]-temp[5*i+4])*(temp[5*i+7]-temp[5*i+5]);
+
+		rssi0 = temp[5*i+1]*temp[5*i+1] + 0.25*(temp[5*i+2]-temp[5*i])*(temp[5*i+2]-temp[5*i]);
+		rssi1 = temp[5*i+2]*temp[5*i+2] + 0.25*(temp[5*i+3]-temp[5*i+1])*(temp[5*i+3]-temp[5*i+1]);
+		rssi2 = temp[5*i+3]*temp[5*i+3] + 0.25*(temp[5*i+4]-temp[5*i+2])*(temp[5*i+4]-temp[5*i+2]);
+		rssi3 = temp[5*i+4]*temp[5*i+4] + 0.25*(temp[5*i+5]-temp[5*i+3])*(temp[5*i+5]-temp[5*i+3]);
+		rssi4 = temp[5*i+5]*temp[5*i+5] + 0.25*(temp[5*i+6]-temp[5*i+4])*(temp[5*i+6]-temp[5*i+4]);
+		outBuf[i] = (m0+m1+m2+m3+m4)/(rssi0+rssi1+rssi2+rssi3+rssi4);
+	}
+}
 
 //=====================================================================================================
 /*
@@ -485,7 +515,10 @@ void Rx_process(unsigned short* ad_data,	short* de_data)
 		IF_Filter(deDcBufOut, ifBufOut);
 		RSSI = getRssiAvr(ifBufOut);
 
-		detectFreq(ifBufOut,lfBufOut);
+		if(working_mode==NORMAL_MODE)
+			detectFreq(ifBufOut,lfBufOut);
+		else if(working_mode==ENHANCE_MODE)
+			detectFreqEnhance(ifBufOut,lfBufOut);
 //				deDcAfterDetectFreq(lfBufOut, lfBufOut);
 //				delDcAfterPhaseDetector(lfBufOut,lfBufOut);
 //				iirFilterAfterDetectFreq(lfBufOut,lfBufOut);
