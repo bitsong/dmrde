@@ -1,2 +1,2 @@
 #dmrde
-vhf dmr
+fish dmr
