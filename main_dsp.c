@@ -931,19 +931,23 @@ void dsp_logic()
     			}
     			break;
     		case TX_CH:
+//    		case TX_CHF:
 //    			log_info("tx_ch:%f",atof(msg_temp.data.d));
-    			channel_freq=atof(msg_temp.data.d);
+//    			channel_freq=atof(msg_temp.data.d);
     			LMX2571_FM_CAL(1,atof(msg_temp.data.d), 1);
     			lmx_init[53]=0xBC3;
     			lmx_init[54]=lmx_init[55]=0x9C3;
     			lmx_init[56]=0x9C3;
     			ch_chPara();
+
     			Task_sleep(10);
     			memset(buf_transmit,0x80,RPE_DATA_SIZE/2*15);
     			break;
     		case RX_CH:
+//    		case RX_CHF:
 //    			log_info("rx_ch:%f",49.95+atof(msg_temp.data.d));
-    			LMX2571_FM_CAL(0,49.95+atof(msg_temp.data.d), 0);
+    			channel_freq=49.95+atof(msg_temp.data.d);
+    			LMX2571_FM_CAL(0,49.95+atof(msg_temp.data.d), 1);
     			lmx_init[53]=0xB83;
     			lmx_init[54]=lmx_init[55]=0x983;
     			lmx_init[56]=0x983;
@@ -1000,27 +1004,27 @@ void dsp_logic()
     		    	message_free(msg_send);
     		    }
     		    break;
-    		case TX_CHF:
-//    			log_info("tx_ch:%f",atof(msg_temp.data.d));
-    			channel_freq=atof(msg_temp.data.d);
-    			LMX2571_FM_CAL(1,atof(msg_temp.data.d), 1);
-    			lmx_init[53]=0xBC3;
-    			lmx_init[54]=lmx_init[55]=0x9C3;
-    			lmx_init[56]=0x9C3;
-    			ch_chPara();
-    			Task_sleep(10);
-    			memset(buf_transmit,0x80,RPE_DATA_SIZE/2*15);
-    			break;
-    		case RX_CHF:
-//    			log_info("rx_ch:%f",49.95+atof(msg_temp.data.d));
-    			LMX2571_FM_CAL(0,49.95+atof(msg_temp.data.d), 0);
-    			lmx_init[53]=0xB83;
-    			lmx_init[54]=lmx_init[55]=0x983;
-    			lmx_init[56]=0x983;
-    			ch_chPara();
-    			Task_sleep(10);
-    			memset(buf_transmit,0x80,RPE_DATA_SIZE/2*15);
-    			break;
+//    		case TX_CHF:
+////    			log_info("tx_ch:%f",atof(msg_temp.data.d));
+//    			channel_freq=atof(msg_temp.data.d);
+//    			LMX2571_FM_CAL(1,atof(msg_temp.data.d), 1);
+//    			lmx_init[53]=0xBC3;
+//    			lmx_init[54]=lmx_init[55]=0x9C3;
+//    			lmx_init[56]=0x9C3;
+//    			ch_chPara();
+//    			Task_sleep(10);
+//    			memset(buf_transmit,0x80,RPE_DATA_SIZE/2*15);
+//    			break;
+//    		case RX_CHF:
+////    			log_info("rx_ch:%f",49.95+atof(msg_temp.data.d));
+//    			LMX2571_FM_CAL(0,49.95+atof(msg_temp.data.d), 0);
+//    			lmx_init[53]=0xB83;
+//    			lmx_init[54]=lmx_init[55]=0x983;
+//    			lmx_init[56]=0x983;
+//    			ch_chPara();
+//    			Task_sleep(10);
+//    			memset(buf_transmit,0x80,RPE_DATA_SIZE/2*15);
+//    			break;
     		case H_TX:
     			transmit_power=eeprom_data[28];
     			break;

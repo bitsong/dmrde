@@ -454,7 +454,7 @@ void _task_mcbsp(void)
     for (count = 0; count < (NUM_BUFS); count++)
     {
         memset((uint8_t *)bufTxPingPong[count], 0, BUFSIZE);
-        LMX2571_FM_CAL( 0,  206.75, 0);//415.125 	156.525;
+        LMX2571_FM_CAL( 0,  77.45,	1);//415.125 	156.525;
         for (tempCount = 0; tempCount < 162; tempCount++){
         		reg_24data.all=lmx_init[tempCount/3];
                	((uint8_t *)bufTxPingPong[count])[tempCount++] = reg_24data.dataBit.data0;
