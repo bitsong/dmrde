@@ -1026,7 +1026,7 @@ void dsp_logic()
     		case RSSTH:
     			RXSS_THRESHOLD=2*atoi(msg_temp.data.d)-125;
     			if(-125==RXSS_THRESHOLD)
-    				RXSS_THRESHOLD=-150;
+    				RXSS_THRESHOLD=-250;
     			break;
 
     		case PA_CURRENT:
