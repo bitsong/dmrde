@@ -16,7 +16,7 @@
 
 CSL_GpioRegsOvly     gpioRegs = (CSL_GpioRegsOvly)(CSL_GPIO_0_REGS);
 
-//unsigned short buf_temp[9600];
+short buf_temp[12000];
 
 short intersam[RPE_DATA_SIZE/2*5];
 
@@ -171,17 +171,6 @@ Void smain(UArg arg0, UArg arg1)
     }
 
 
-
-//    Error_init(&eb);
-//    Task_Params_init(&taskParams);
-//    taskParams.instance->name = "audioSignalRX";
-//    taskParams.arg0 = (UArg)arg0;
-//    taskParams.arg1 = (UArg)arg1;
-//    taskParams.stackSize = 0x4000;
-//    Task_create(audioSignalRX, &taskParams, &eb);
-//    if(Error_check(&eb)) {
-//        System_abort("main: failed to create application 0 thread");
-//    }
 #if 1
 //
     Task_Params_init(&taskParams);
@@ -213,18 +202,13 @@ Void smain(UArg arg0, UArg arg1)
 
     for(;;){
     	Task_sleep(20);
-//    	Task_yield();
-
     	RSSI_db=-24.288+10*log10(RSSI)-eeprom_data[84];//120      -125_10
-
-    	if(RSSI_db<-115.4)
+    	if(RSSI_db<-115.4){
     		//fitting : y = - 0.16365*x^{2} - 36.798*x - 2182.9
-//    		RSSI_db=-0.16365*RSSI_db*RSSI_db-36.798*RSSI_db-2182.9;
-    		//y = 0.011574*x^{3} + 3.9377*x^{2} + 447.59*x + 16885
-//    		RSSI_db=0.011574*powi(RSSI_db,3)+ 3.9377*powi(RSSI_db,2)+ 447.59*RSSI_db + 16885;
+    		//RSSI_db=-0.16365*RSSI_db*RSSI_db-36.798*RSSI_db-2182.9;
     		//y = 0.071842*x^{3} + 25.165*x^{2} + 2939.6*x + 1.144e+05
     		RSSI_db=0.071842*powi(RSSI_db,3)+ 25.165*powi(RSSI_db,2)+ 2939.6*RSSI_db + 114397;
-//    	vol_A=0.061*sqrt(2*RSSI);
+    	}
     	dsp_logic();
     }
 
@@ -242,18 +226,11 @@ Void smain(UArg arg0, UArg arg1)
 /* Here on dsc_timer interrupt */
 Void hwiFxn(UArg arg)
 {
-	static int flag;
+	int flag;
 
-	 /* get the GIPO6_5 value		                                           */
-	 flag=CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1);
-
-//	 {
-		 enQueue(&q, flag);
-//	 }
-//	 else{
-//		 enQueue(&q, 0);
-//	 }
-//	enQueue(&q, CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1));
+	/* get the GIPO6_5 value		                                           */
+	flag=CSL_FEXT(gpioRegs->BANK[1].IN_DATA,GPIO_IN_DATA_IN1);
+	enQueue(&q, flag);
 }
 
 /*
@@ -464,8 +441,6 @@ void dataFilterAndTrans(short *inBuf,short *outBuf,short len)
 }
 
 
-
-#if 1
 void data_process(short *buf_in, unsigned char *buf_out, unsigned int size)
 {
 	uint32_t tempdata=0;
@@ -473,42 +448,26 @@ void data_process(short *buf_in, unsigned char *buf_out, unsigned int size)
 	reg_16 reg16;
 	float k;
 	static float factor;
-//	static short index;
+	static int count12=0;
+
 //	short intersam[RPE_DATA_SIZE/2*5];
 
 	//5  24to120
 	k=1.525333/5/3;
 	factor=FSK_FAST_SPI_calc();
 
-//    for (tempCount = 0; tempCount < RPE_DATA_SIZE/2; tempCount++){
-//    	if(buf_in[tempCount]>16400)
-//    		buf_in[tempCount]=5000;
-//    	else if(buf_in[tempCount]<-4000)
-//    		buf_in[tempCount]=-4000;
-//
-//    	buf_temp[index++]=buf_in[tempCount];
-//    	if(index>=1199)
-//    		index=0;
-
-//    }
+//	int i1,i2;
+//	for(i1=0;i1<2400;i1++)
+//		buf_temp[i1]=2000*sin(2*Pi*i1*1350/120000);
+//	for(i1=1200;i1<2400;i1++)
+//		buf_temp[i1]=2000*sin(2*Pi*i1*3*450/120000);
 
     dataFilterAndTrans(buf_in, intersam,RPE_DATA_SIZE/2);
 
 
-//    for (tempCount = 0; tempCount < RPE_DATA_SIZE/2*5; tempCount++){
-//    	if(intersam[tempCount]>102)
-//    		intersam[tempCount]=102;
-//    	else if(intersam[tempCount]<-102)
-//    		intersam[tempCount]=-102;
-//
-//    	buf_temp[index++]=intersam[tempCount];
-//    	if(index>=9599)
-//    		index=0;
-//
-//    }
-
     for(tempCount=0,tempdata=0;tempCount<RPE_DATA_SIZE/2*5;tempCount++)
     {
+//    	intersam[tempCount]=buf_temp[tempCount+count12*1200];
     	//Interpolation
     	reg16.all=(unsigned short)(factor*(intersam[tempCount]/k));
 
@@ -516,100 +475,12 @@ void data_process(short *buf_in, unsigned char *buf_out, unsigned int size)
     	((uint8_t *)buf_out)[tempdata++] 	 	 = reg16.dataBit.data1;
     	((uint8_t *)buf_out)[tempdata++] 	     = (uint8_t)33;
     }
+//    count12++;
+//    if(2==count12)
+//    	count12=0;
 }
 
-#else
-void data_process(short *buf_in, unsigned char *buf_out, unsigned int size)
-{
-	uint32_t tempdata=0;
-	uint32_t tempCount;
-	reg_16 reg16;
-	float k;
-	static float factor;
-	short xn,xn1;
 
-#if 0
-
-	k=20000.000000/3000.000000;
-	factor=FSK_FAST_SPI_calc();
-
-    for (tempCount = 0; tempCount < RPE_DATA_SIZE/2; tempCount++){
-    	if(ring_ar[tempCount]>20000)
-    		ring_ar[tempCount]=20000;
-    	else if(ring_ar[tempCount]<-20000)
-    		ring_ar[tempCount]=-20000;
-
-    	//Interpolation
-    	reg16.all=(unsigned short)(factor*(ring_ar[tempCount]/k));
-
-    	((uint8_t *)buf_out)[tempdata] 	 	 = reg16.dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = reg16.dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+6]	 = reg16.dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = reg16.dataBit.data0;
-    	((uint8_t *)buf_out)[12+tempdata++]  = reg16.dataBit.data0;
-
-    	((uint8_t *)buf_out)[tempdata] 	 	 = reg16.dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = reg16.dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+6]	 = reg16.dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = reg16.dataBit.data1;
-    	((uint8_t *)buf_out)[12+tempdata++]  = reg16.dataBit.data1;
-
-    	((uint8_t *)buf_out)[tempdata] 	     = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+6]	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[12+tempdata++]  = (uint8_t)33;
-
-    	tempdata+=12;
-    }
-#else
-	static reg_16 reg16plus;
-	reg_16 reg[4];
-
-	k=20000.000000/3000.000000;
-	factor=FSK_FAST_SPI_calc();
-
-    for (tempCount = 0; tempCount < RPE_DATA_SIZE/2; tempCount++){
-    	if(ring_ar[tempCount]>20000)
-    		ring_ar[tempCount]=20000;
-    	else if(ring_ar[tempCount]<-20000)
-    		ring_ar[tempCount]=-20000;
-
-    	//Interpolation
-    	xn=factor*(ring_ar[tempCount]/k);
-    	if(tempCount+1<RPE_DATA_SIZE/2)
-    		xn1=factor*(ring_ar[tempCount+1]/k);
-    	else
-    		xn1=xn;
-    	reg16.all=(unsigned short)xn;
-    	reg[0].all=(unsigned short)(0.8*xn+0.2*xn1);
-    	reg[1].all=(unsigned short)(0.6*xn+0.4*xn1);
-    	reg[2].all=(unsigned short)(0.4*xn+0.6*xn1);
-    	reg[3].all=(unsigned short)(0.2*xn+0.8*xn1);
-
-    	((uint8_t *)buf_out)[tempdata] 	 	 = reg16.dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = reg[0].dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+6]	 = reg[1].dataBit.data0;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = reg[2].dataBit.data0;
-    	((uint8_t *)buf_out)[12+tempdata++]  = reg[3].dataBit.data0;
-
-    	((uint8_t *)buf_out)[tempdata] 	 	 = reg16.dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = reg[0].dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+6]	 = reg[1].dataBit.data1;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = reg[2].dataBit.data1;
-    	((uint8_t *)buf_out)[12+tempdata++]  = reg[3].dataBit.data1;
-
-    	((uint8_t *)buf_out)[tempdata] 	     = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+3] 	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+6]	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[tempdata+9] 	 = (uint8_t)33;
-    	((uint8_t *)buf_out)[12+tempdata++]  = (uint8_t)33;
-
-    	tempdata+=12;
-    }
-#endif
-}
-#endif
 
 /*
  *  ======== data_send ========
@@ -687,13 +558,11 @@ Void task_enque(UArg arg0, UArg arg1)
 {
 	extern audioQueue audioQ;
 	extern AudioQueue_DATA_TYPE audioQueueRxBuf[];
-//	int i=0;
-//	static short index
+	int i=0;
+	static short index;
 	unsigned short buf_16[REC_BUFSIZE/3] = {0};
 
 	static short pingpongflag;
-
-//	audioQueueInit(&audioQ, AUDIO_QUEUE_RX_LENGTH, audioQueueRxBuf);
 
 	do{
 		Semaphore_pend(sem1,BIOS_WAIT_FOREVER);
@@ -703,13 +572,11 @@ Void task_enque(UArg arg0, UArg arg1)
 		Rx_process(buf_16,buf_de);
 		data_send((uint8_t*)buf_de);
 
-//		//data enqueue
+		//data enqueue
 //		for(i = 0; i < REC_BUFSIZE/15; i++)
 //		{
-////			enAudioQueue(&audioQ, buf_16[i]);
-//
-//			buf_temp[index++]=buf_de[i];
-//			if(index>=9599)
+//			buf_temp[index++]=buf_16[i];
+//			if(index>=11999)
 //					index=0;
 //		}
 	}while(1);
@@ -822,8 +689,6 @@ void dsp_logic()
 	char* poffs=NULL;
     message_t *msg =NULL, *msg_send=NULL;
 //    static float transmit_power=L_TXPWR;
-
-
 
     if(1==rx_submit){
     	msg_send=(message_t *)message_alloc(msgbuf[0],sizeof(message_t));

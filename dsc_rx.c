@@ -617,6 +617,7 @@ static UShort correctError(UShort *infBuf, errorInf *rowError, errorInf *columEr
  * 功能：检错、纠错
  * 返回值：0--不能修复；1--infBuf1 修复成功；2--infBuf2 修复成功
  */
+#if 0
 static UShort errorFixup(UShort *infBuf1, UShort *infBuf2)
 {
 	UShort status = 0;
@@ -642,7 +643,32 @@ static UShort errorFixup(UShort *infBuf1, UShort *infBuf2)
 
 	return status;
 }
+#else
+static UShort errorFixup(UShort *infBuf1, UShort *infBuf2)
+{
+	char zeroCountBit = 0;
+	char i = 0;
+	char index = 0;
+	for(i = 0; i < dscInformationLen; ++i )
+	{
+		index = infBuf1[i] & 0x007F;
+		zeroCountBit = (UChar)(infBuf1[i] >> 7);  //获取监督码
+		if(zeroCountBit != checkErrorTable[index])
+		{
+			index = infBuf2[i] & 0x007F;
+			zeroCountBit = (UChar)(infBuf2[i] >> 7);  //获取监督码
+			if(zeroCountBit == checkErrorTable[index])
+			{
+				infBuf1[i] = infBuf2[i];
+			}
+			else
+				return 0;
+		}
+	}
 
+	return 1;
+}
+#endif
 
 /*
  * 功能：打包

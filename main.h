@@ -96,6 +96,7 @@
 #define RPE_DATA_SIZE		480
 #define REC_BUFSIZE	 		3600
 //768*4  //256*3
+#define Pi					3.1415926f
 
 typedef volatile union reg_24bit{
 	struct reg24_2571{
